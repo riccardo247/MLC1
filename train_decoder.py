@@ -7,8 +7,8 @@ import sys
 import argparse
 import math
 import time
-from model import BIML, describe_model
-from eval import evaluate_ll
+from model_llama import LLAMA, describe_model
+from eval_llama import evaluate_ll
 import datasets as dat
 from train_lib import seed_all, timeSince
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -25,9 +25,9 @@ def train(batch, net, loss_fn, optimizer, langs):
     optimizer.zero_grad()
     net.train()
     m = len(batch['yq']) # effective batch size b*nq (num_episodes*num_queries)
-    target_batches = batch['yq_padded'] # b*nq x max_length
-    target_lengths = batch['yq_lengths'] # list of size b*nq
-    target_shift = batch['yq_sos_padded'] # b*nq x max_length
+    target_batches = batch['xy_support_query_padded'] # b*nq x max_length
+    target_lengths = batch['xy_support_query_lengths'] # list of size b*nq
+    target_shift = batch['xy_sos_support_query_padded'] # b*nq x max_length
         # shifted targets with padding (added SOS symbol at beginning and removed EOS symbol) 
     decoder_output = net(target_shift, batch) # b*nq x max_length x output_size
     logits_flat = decoder_output.reshape(-1, decoder_output.shape[-1]) # (b*nq*max_length, output_size)
@@ -174,10 +174,14 @@ if __name__ == "__main__":
                     'nepochs':nepochs, 'batch_size':batch_size, 'activation':myact, 'ff_mult':ff_mult, 'args':args}
 
     # setup model
-    net = BIML(emb_size, input_size, output_size,
-        langs['input'].PAD_idx, langs['output'].PAD_idx,
-        nlayers_encoder=nlayers_encoder, nlayers_decoder=nlayers_decoder, 
-        dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
+    net = LLAMA(emb_size, input_size,
+                langs['input'].PAD_idx, langs['output'].PAD_idx,
+                nlayers_decoder=nlayers_decoder,
+                dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
+    # net = BIML(emb_size, input_size, output_size,
+    #     langs['input'].PAD_idx, langs['output'].PAD_idx,
+    #     nlayers_encoder=nlayers_encoder, nlayers_decoder=nlayers_decoder,
+    #     dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
     net = net.to(device=DEVICE)
 
     # setup loss and scheduled

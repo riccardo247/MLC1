@@ -268,9 +268,15 @@ def bundle_biml_episode(x_support,y_support,x_query,y_query,myhash,aux={}):
     #  sample : dict that stores episode information
     ns = len(x_support)
     xy_support = [ITEM_SEP]
+    xy_support_query = []
     for j in range(ns):
         xy_support += x_support[j] + [IO_SEP] + y_support[j] + [ITEM_SEP]
     x_query_context = [item + xy_support for item in x_query] # Create the combined source sequence for every query
+    nq = len(x_query)
+    xy_qsupport = [ITEM_SEP]
+    for j in range(nq):
+        xy_support_query += [xy_support + x_query[j] + [IO_SEP] + y_query[j] + [ITEM_SEP]]
+    #xy_support_query = xy_support + xy_qsupport  # Create the combined support + query
     sample = {}
     sample['identifier'] = myhash # unique identifying string for this episode (order invariant)
     sample['xs'] = x_support # support 
@@ -278,42 +284,43 @@ def bundle_biml_episode(x_support,y_support,x_query,y_query,myhash,aux={}):
     sample['xq'] = x_query # query
     sample['yq'] = y_query
     sample['xq_context'] = x_query_context
+    sample['xy_support_query'] = xy_support_query
     if aux: sample['aux'] = aux
     return sample
 
-def make_biml_batch_decoder(samples, langs):
-    # Batch episodes into a series of padded input and target tensors
-    # 
-    # Input
-    #  samples : list of dicts from bundle_biml_episode
-    #  langs : input and output version of Lang class
-    assert isinstance(samples,list)
-    m = len(samples)
-    mybatch = {}
-    mybatch['list_samples'] = samples
-    mybatch['batch_size'] = m
-    mybatch['xq_context'] = [] # list of source sequences (as lists) across all episodes
-    mybatch['xq'] = []  # list of queries (as lists) across all episodes
-    mybatch['yq'] = [] # list of query outputs (as lists) across all episodes
-    mybatch['q_idx'] = [] # index of which episode each query belongs to
-    mybatch['in_support'] = [] # bool list indicating whether each query is in its corresponding support set, or not
-    for idx in range(m): # each episode
-        sample = samples[idx]
-        nq = len(sample['xq'])
-        assert(nq == len(sample['yq']))
-        mybatch['xq_context'] += sample['xq_context']
-        mybatch['xq'] += sample['xq']
-        mybatch['yq'] += sample['yq']
-        mybatch['q_idx'] += [idx*torch.ones(nq, dtype=torch.int)]
-        mybatch['in_support'] += [x in sample['xs'] for x in sample['xq']] 
-    mybatch['q_idx'] = torch.cat(mybatch['q_idx'], dim=0)
-    mybatch['xq_context_padded'],mybatch['xq_context_lengths'] = build_padded_tensor(mybatch['xq_context'], langs['input'])
-    #
-    mybatch['yq_padded'], mybatch['yq_lengths'] = build_padded_tensor(mybatch['xq_context'] + mybatch['yq'], langs['input'])
-    mybatch['yq_sos_padded'],mybatch['yq_sos_lengths'] = build_padded_tensor(mybatch['xq_context'] +mybatch['yq'],langs['output'],add_eos=False,add_sos=True)
-    #mybatch['yq_padded'],mybatch['yq_lengths'] = build_padded_tensor(mybatch['yq'], langs['output'])
-    #mybatch['yq_sos_padded'],mybatch['yq_sos_lengths'] = build_padded_tensor(mybatch['yq'],langs['output'],add_eos=False,add_sos=True)
-    return mybatch
+# def make_biml_batch_decoder(samples, langs):
+#     # Batch episodes into a series of padded input and target tensors
+#     #
+#     # Input
+#     #  samples : list of dicts from bundle_biml_episode
+#     #  langs : input and output version of Lang class
+#     assert isinstance(samples,list)
+#     m = len(samples)
+#     mybatch = {}
+#     mybatch['list_samples'] = samples
+#     mybatch['batch_size'] = m
+#     mybatch['xq_context'] = [] # list of source sequences (as lists) across all episodes
+#     mybatch['xq'] = []  # list of queries (as lists) across all episodes
+#     mybatch['yq'] = [] # list of query outputs (as lists) across all episodes
+#     mybatch['q_idx'] = [] # index of which episode each query belongs to
+#     mybatch['in_support'] = [] # bool list indicating whether each query is in its corresponding support set, or not
+#     for idx in range(m): # each episode
+#         sample = samples[idx]
+#         nq = len(sample['xq'])
+#         assert(nq == len(sample['yq']))
+#         mybatch['xq_context'] += sample['xq_context']
+#         mybatch['xq'] += sample['xq']
+#         mybatch['yq'] += sample['yq']
+#         mybatch['q_idx'] += [idx*torch.ones(nq, dtype=torch.int)]
+#         mybatch['in_support'] += [x in sample['xs'] for x in sample['xq']]
+#     mybatch['q_idx'] = torch.cat(mybatch['q_idx'], dim=0)
+#     mybatch['xq_context_padded'],mybatch['xq_context_lengths'] = build_padded_tensor(mybatch['xq_context'], langs['input'])
+#     #
+#     mybatch['yq_padded'], mybatch['yq_lengths'] = build_padded_tensor(mybatch['xq_context'] + mybatch['yq'], langs['input'])
+#     mybatch['yq_sos_padded'],mybatch['yq_sos_lengths'] = build_padded_tensor(mybatch['xq_context'] +mybatch['yq'],langs['output'],add_eos=False,add_sos=True)
+#     #mybatch['yq_padded'],mybatch['yq_lengths'] = build_padded_tensor(mybatch['yq'], langs['output'])
+#     #mybatch['yq_sos_padded'],mybatch['yq_sos_lengths'] = build_padded_tensor(mybatch['yq'],langs['output'],add_eos=False,add_sos=True)
+#     return mybatch
 
 def make_biml_batch(samples, langs):
     # Batch episodes into a series of padded input and target tensors
@@ -327,6 +334,7 @@ def make_biml_batch(samples, langs):
     mybatch['list_samples'] = samples
     mybatch['batch_size'] = m
     mybatch['xq_context'] = [] # list of source sequences (as lists) across all episodes
+    mybatch['xy_support_query'] = [] # list of support and query concatenated across all episoed
     mybatch['xq'] = []  # list of queries (as lists) across all episodes
     mybatch['yq'] = [] # list of query outputs (as lists) across all episodes
     mybatch['q_idx'] = [] # index of which episode each query belongs to
@@ -336,12 +344,16 @@ def make_biml_batch(samples, langs):
         nq = len(sample['xq'])
         assert(nq == len(sample['yq']))
         mybatch['xq_context'] += sample['xq_context']
+        mybatch['xy_support_query'] += sample['xy_support_query']
         mybatch['xq'] += sample['xq']
         mybatch['yq'] += sample['yq']
         mybatch['q_idx'] += [idx*torch.ones(nq, dtype=torch.int)]
         mybatch['in_support'] += [x in sample['xs'] for x in sample['xq']]
     mybatch['q_idx'] = torch.cat(mybatch['q_idx'], dim=0)
-    
+    mybatch['xy_support_query_padded'], mybatch['xy_support_query_lengths'] = build_padded_tensor(
+        mybatch['xy_support_query'], langs['input'])
+    mybatch['xy_sos_support_query_padded'], mybatch['xy_sos_support_query_lengths'] = build_padded_tensor(
+        mybatch['xy_support_query'], langs['input'], add_eos=False,add_sos=True)
     mybatch['xq_context_padded'],mybatch['xq_context_lengths'] = build_padded_tensor(mybatch['xq_context'], langs['input'])
     mybatch['yq_padded'],mybatch['yq_lengths'] = build_padded_tensor(mybatch['yq'], langs['output'])
     mybatch['yq_sos_padded'],mybatch['yq_sos_lengths'] = build_padded_tensor(mybatch['yq'],langs['output'],add_eos=False,add_sos=True)
