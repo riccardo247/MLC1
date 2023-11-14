@@ -8,7 +8,7 @@ import argparse
 import numpy as np
 import math
 from copy import deepcopy
-from model import BIML, describe_model
+from model_llama import LLAMA, describe_model
 import datasets as dat
 from train_lib import seed_all, extract, display_input_output, assert_consist_langs
 
@@ -42,7 +42,7 @@ def evaluate_acc(val_dataloader, net, langs, max_length, eval_type='max', verbos
     #
     # Input
     #   val_dataloader :
-    #   net : BIML model
+    #   net : LLAMA model
     #   langs : dict of dat.Lang classes
     #   max_length : maximum length of output sequences
     #   langs : dict of dat.Lang classes
@@ -128,28 +128,32 @@ def smooth_decoder_outputs(logits_flat, p_lapse, lapse_symb_include, langs):
     log_probs_flat = torch.log((1 - p_lapse) * probs_flat + p_lapse * probs_lapse)  # (batch*max_len, output_size)
     return log_probs_flat
 
-
 def batch_acc(batch, net, langs, max_length, eval_type='max', out_mask_allow=[]):
     # Evaluate exact match accuracy for a given batch
     #
     #  Input
     #   batch : from dat.make_biml_batch
-    #   net : BIML model
+    #   net : LLAMA model
     #   max_length : maximum length of output sequences
     #   langs : dict of dat.Lang classes
     #   eval_type : 'max' for greedy decoding, 'sample' for sample from distribution
     #   out_mask_allow : default=[]; list of emission symbols (strings) we want to allow. Default of [] allows all output emissions
     assert eval_type in ['max', 'sample']
     net.eval()
-    emission_lang = langs['output']
+    emission_lang = langs['input']
     use_mask = len(out_mask_allow) > 0
-    memory, memory_padding_mask = net.encode(batch)
+    #memory, memory_padding_mask = net.encode(batch)
     # memory : b*nq x maxlength_src x hidden_size
     # memory_padding_mask : b*nq x maxlength_src (False means leave alone)
     m = len(batch['yq'])  # b*nq
-    z_padded = torch.tensor([emission_lang.symbol2index[dat.SOS_token]] * m)  # b*nq length tensor
-    z_padded = z_padded.unsqueeze(1)  # [b*nq x 1] tensor
-    z_padded = z_padded.to(device=DEVICE)
+    #now z_appded contains all the x context and x_query as well and model has to complete
+    #extract support + x_query. structure is support+ ITEM_SEP + x_query + IO_SEP + y_query
+    #ITEM_SEP = SOS_token = (n in list)
+
+    z_padded = batch['xy_support_xquery_padded'].to(device=DEVICE)
+    # z_padded = torch.tensor([emission_lang.symbol2index[dat.SOS_token]] * m)  # b*nq length tensor
+    # z_padded = z_padded.unsqueeze(1)  # [b*nq x 1] tensor
+    # z_padded = z_padded.to(device=DEVICE)
     max_length_target = batch['yq_padded'].shape[1] - 1  # length without EOS
     assert max_length >= max_length_target  # make sure that the net can generate targets of the proper length
 
@@ -166,7 +170,7 @@ def batch_acc(batch, net, langs, max_length, eval_type='max', out_mask_allow=[])
     all_decoder_outputs = torch.zeros((m, max_length), dtype=torch.long)
     all_decoder_outputs = all_decoder_outputs.to(device=DEVICE)
     for t in range(max_length):
-        decoder_output = net.decode(z_padded, memory, memory_padding_mask)
+        decoder_output = net(z_padded, batch)
         # decoder_output is b*nq x (t+1) x output_size
         decoder_output = decoder_output[:, -1]  # get the last step's output (batch_size x output_size)
         if use_mask: decoder_output += additive_out_mask
@@ -559,10 +563,10 @@ if __name__ == "__main__":
     add_pad = dat.PAD_token not in checkpoint['langs']['input'].symbol2index
 
     # Load model parameters
-    net = BIML(emb_size, input_size, output_size,
-               langs['input'].PAD_idx, langs['output'].PAD_idx,
-               nlayers_encoder=nlayers_encoder, nlayers_decoder=nlayers_decoder,
-               dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
+    net = LLAMA(emb_size, input_size,
+                langs['input'].PAD_idx, langs['input'].PAD_idx,
+                nlayers_decoder=nlayers_decoder,
+                dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
     net.load_state_dict(nets_state_dict)
     net = net.to(device=DEVICE)
     describe_model(net)

@@ -190,21 +190,21 @@ class LLAMA(nn.Module):
         self.llama = LlamaForCausalLM(llama_config)
 
 
-    def prep_encode(self, xq_context_padded):
-        # Embed source sequences and make masks
-        #
-        # Input
-        #  xq_context_padded : source sequences via token index # b*nq (batch_size) x maxlen_src
-        xq_context_embed = self.input_embedding(xq_context_padded) # batch_size x maxlen_src x emb_size
-
-        # Add positional encoding to input embeddings
-        src_embed = self.positional_encoding(xq_context_embed.transpose(0,1))
-        src_embed = src_embed.transpose(0,1) # batch_size x maxlen_src x emb_size
-
-        # Create masks for padded source sequences
-        src_padding_mask = xq_context_padded==self.PAD_idx_input # batch_size x  maxlen_src
-            # value of True means ignore
-        return src_embed, src_padding_mask
+    # def prep_encode(self, xq_context_padded):
+    #     # Embed source sequences and make masks
+    #     #
+    #     # Input
+    #     #  xq_context_padded : source sequences via token index # b*nq (batch_size) x maxlen_src
+    #     xq_context_embed = self.input_embedding(xq_context_padded) # batch_size x maxlen_src x emb_size
+    #
+    #     # Add positional encoding to input embeddings
+    #     src_embed = self.positional_encoding(xq_context_embed.transpose(0,1))
+    #     src_embed = src_embed.transpose(0,1) # batch_size x maxlen_src x emb_size
+    #
+    #     # Create masks for padded source sequences
+    #     src_padding_mask = xq_context_padded==self.PAD_idx_input # batch_size x  maxlen_src
+    #         # value of True means ignore
+    #     return src_embed, src_padding_mask
 
     def prep_decode(self, z_padded):
         # Embed target sequences and make masks
@@ -220,7 +220,7 @@ class LLAMA(nn.Module):
         tgt_embed = tgt_embed.transpose(0,1) # batch_size x maxlen_tgt x emb_size
 
         # create mask for padded targets
-        tgt_padding_mask = z_padded==self.PAD_idx_output # batch_size x maxlen_tgt
+        tgt_padding_mask = z_padded==self.PAD_idx_input # batch_size x maxlen_tgt
             # value of True means ignore
 
         # create diagonal mask for autoregressive control
@@ -237,11 +237,14 @@ class LLAMA(nn.Module):
         #
         # Output
         #   output : [b*nq x maxlen_target x output_size]
-        xy_support_query_padded = batch['xy_support_query_padded'] # n_samples x sample_x_batch_ [maxlen_src]
-        src_embed, src_padding_mask = self.prep_encode(xy_support_query_padded)
+        if self.training:
+            xy_support_query_padded = batch['xy_support_query_padded'] # n_samples x sample_x_batch_ [maxlen_src]
+        else:
+            xy_support_query_padded = z_padded #batch['xy_support_xquery_padded']
+        #src_embed, src_padding_mask = self.prep_decode(xy_support_query_padded)
         tgt_embed, tgt_padding_mask,  = self.prep_decode(z_padded) #always use input dict that is combined input+output+special symbols
         out = self.llama.forward(input_ids=xy_support_query_padded,
-                                 attention_mask=src_padding_mask)
+                                 attention_mask=tgt_padding_mask)
         # trans_out = self.transformer(src_embed, tgt_embed, tgt_mask=tgt_mask,
         #     src_key_padding_mask=src_padding_mask, tgt_key_padding_mask=tgt_padding_mask,
         #     memory_key_padding_mask=src_padding_mask)
@@ -261,7 +264,7 @@ class LLAMA(nn.Module):
         memory_padding_mask = src_padding_mask
         return memory, memory_padding_mask
 
-    def decode(self, z_padded, memory, memory_padding_mask):
+    def decode(self, z_padded, batch):
         # Forward pass through decoder only
         #
         # Input
@@ -271,8 +274,9 @@ class LLAMA(nn.Module):
         #
         # Output
         #   output : [b*nq x maxlen_target x output_size]
-        tgt_embed, tgt_padding_mask, tgt_mask = self.prep_decode(z_padded)
-        trans_out = self.transformer.decoder(tgt_embed, memory,
-                tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_padding_mask, memory_key_padding_mask=memory_padding_mask)
-        output = self.out(trans_out)
+        tgt_embed, tgt_padding_mask = self.prep_decode(z_padded)
+        output = self.forward(tgt_embed, batch)
+        # output = self.transformer.decoder(tgt_embed, memory,
+        #         tgt_mask=tgt_mask, tgt_key_padding_mask=tgt_padding_mask, memory_key_padding_mask=memory_padding_mask)
+
         return output

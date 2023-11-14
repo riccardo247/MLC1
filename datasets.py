@@ -269,13 +269,16 @@ def bundle_biml_episode(x_support,y_support,x_query,y_query,myhash,aux={}):
     ns = len(x_support)
     xy_support = [ITEM_SEP]
     xy_support_query = []
+    xy_support_xquery = []
     for j in range(ns):
         xy_support += x_support[j] + [IO_SEP] + y_support[j] + [ITEM_SEP]
     x_query_context = [item + xy_support for item in x_query] # Create the combined source sequence for every query
     nq = len(x_query)
-    xy_qsupport = [ITEM_SEP]
     for j in range(nq):
-        xy_support_query += [xy_support + x_query[j] + [IO_SEP] + y_query[j] + [ITEM_SEP]]
+        xy_support_query += [xy_support + x_query[j] + [IO_SEP] + y_query[j] ]
+    #this is for validation of llama
+    for j in range(nq):
+        xy_support_xquery += [xy_support + x_query[j] + [IO_SEP] ]
     #xy_support_query = xy_support + xy_qsupport  # Create the combined support + query
     sample = {}
     sample['identifier'] = myhash # unique identifying string for this episode (order invariant)
@@ -285,6 +288,7 @@ def bundle_biml_episode(x_support,y_support,x_query,y_query,myhash,aux={}):
     sample['yq'] = y_query
     sample['xq_context'] = x_query_context
     sample['xy_support_query'] = xy_support_query
+    sample['xy_support_xquery'] = xy_support_xquery
     if aux: sample['aux'] = aux
     return sample
 
@@ -334,7 +338,8 @@ def make_biml_batch(samples, langs):
     mybatch['list_samples'] = samples
     mybatch['batch_size'] = m
     mybatch['xq_context'] = [] # list of source sequences (as lists) across all episodes
-    mybatch['xy_support_query'] = [] # list of support and query concatenated across all episoed
+    mybatch['xy_support_query'] = [] # list of support and query concatenated across all episodes
+    mybatch['xy_support_xquery'] = []  # list of support and query concatenated across all episodes
     mybatch['xq'] = []  # list of queries (as lists) across all episodes
     mybatch['yq'] = [] # list of query outputs (as lists) across all episodes
     mybatch['q_idx'] = [] # index of which episode each query belongs to
@@ -345,6 +350,7 @@ def make_biml_batch(samples, langs):
         assert(nq == len(sample['yq']))
         mybatch['xq_context'] += sample['xq_context']
         mybatch['xy_support_query'] += sample['xy_support_query']
+        mybatch['xy_support_xquery'] += sample['xy_support_xquery']
         mybatch['xq'] += sample['xq']
         mybatch['yq'] += sample['yq']
         mybatch['q_idx'] += [idx*torch.ones(nq, dtype=torch.int)]
@@ -352,6 +358,8 @@ def make_biml_batch(samples, langs):
     mybatch['q_idx'] = torch.cat(mybatch['q_idx'], dim=0)
     mybatch['xy_support_query_padded'], mybatch['xy_support_query_lengths'] = build_padded_tensor(
         mybatch['xy_support_query'], langs['input'])
+    mybatch['xy_support_xquery_padded'], mybatch['xy_support_xquery_lengths'] = build_padded_tensor(
+        mybatch['xy_support_xquery'], langs['input'])
     mybatch['xy_sos_support_query_padded'], mybatch['xy_sos_support_query_lengths'] = build_padded_tensor(
         mybatch['xy_support_query'], langs['input'], add_eos=False,add_sos=True)
     mybatch['xq_context_padded'],mybatch['xq_context_lengths'] = build_padded_tensor(mybatch['xq_context'], langs['input'])

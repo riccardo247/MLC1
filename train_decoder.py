@@ -175,7 +175,7 @@ if __name__ == "__main__":
 
     # setup model
     net = LLAMA(emb_size, input_size,
-                langs['input'].PAD_idx, langs['output'].PAD_idx,
+                langs['input'].PAD_idx, langs['input'].PAD_idx,
                 nlayers_decoder=nlayers_decoder,
                 dropout_p=dropout_p, activation=myact, ff_mult=ff_mult)
     # net = BIML(emb_size, input_size, output_size,
