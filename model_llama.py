@@ -220,8 +220,10 @@ class LLAMA(nn.Module):
         tgt_embed = tgt_embed.transpose(0,1) # batch_size x maxlen_tgt x emb_size
 
         # create mask for padded targets
-        tgt_padding_mask = z_padded==self.PAD_idx_input # batch_size x maxlen_tgt
-            # value of True means ignore
+
+        tgt_padding_mask = z_padded!=self.PAD_idx_input # batch_size x maxlen_tgt
+        tgt_padding_mask = tgt_padding_mask.int()
+            # in llama value of 0 means ignore
 
         # create diagonal mask for autoregressive control
         #tgt_mask = self.transformer.generate_square_subsequent_mask(maxlen_tgt) # maxlen_tgt x maxlen_tgt
@@ -237,8 +239,9 @@ class LLAMA(nn.Module):
         #
         # Output
         #   output : [b*nq x maxlen_target x output_size]
+        # z_padded is shifted to the right by one
         if self.training:
-            xy_support_query_padded = batch['xy_support_query_padded'] # n_samples x sample_x_batch_ [maxlen_src]
+            xy_support_query_padded = z_padded #batch['xy_support_query_padded'] # n_samples x sample_x_batch_ [maxlen_src]
         else:
             xy_support_query_padded = z_padded #batch['xy_support_xquery_padded']
         #src_embed, src_padding_mask = self.prep_decode(xy_support_query_padded)

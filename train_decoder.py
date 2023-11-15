@@ -28,7 +28,8 @@ def train(batch, net, loss_fn, optimizer, langs):
     target_batches = batch['xy_support_query_padded'] # b*nq x max_length
     target_lengths = batch['xy_support_query_lengths'] # list of size b*nq
     target_shift = batch['xy_sos_support_query_padded'] # b*nq x max_length
-        # shifted targets with padding (added SOS symbol at beginning and removed EOS symbol) 
+        # shifted targets with padding (added SOS symbol at beginning and removed EOS symbol)
+    #llama uses inverse mask 0 is masked
     decoder_output = net(target_shift, batch) # b*nq x max_length x output_size
     logits_flat = decoder_output.reshape(-1, decoder_output.shape[-1]) # (b*nq*max_length, output_size)
     loss = loss_fn(logits_flat, target_batches.reshape(-1))
