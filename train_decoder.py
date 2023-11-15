@@ -168,7 +168,7 @@ if __name__ == "__main__":
     if bool_save_best: print('    with "save best" early stopping')
     langs = D_train.langs
     input_size = langs['input'].n_symbols
-    output_size = langs['output'].n_symbols
+    output_size = langs['input'].n_symbols
     params_state = {'langs': langs, 'episode_type': episode_type, 'emb_size':emb_size, 'input_size':input_size, 'output_size':output_size,
                     'dropout':dropout_p, 'nlayers_encoder':nlayers_encoder, 'nlayers_decoder':nlayers_decoder,
                     'nepochs':nepochs, 'batch_size':batch_size, 'activation':myact, 'ff_mult':ff_mult, 'args':args}
@@ -185,7 +185,7 @@ if __name__ == "__main__":
     net = net.to(device=DEVICE)
 
     # setup loss and scheduled
-    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=langs['output'].PAD_idx)
+    loss_fn = torch.nn.CrossEntropyLoss(ignore_index=langs['input'].PAD_idx)
     optimizer = optim.AdamW(net.parameters(),lr=adamW_learning_rate, betas=(0.9,0.95), weight_decay=0.01)
     if lr_warmup:
         print('    with LR warmup ON (1st epoch)')

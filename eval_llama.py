@@ -28,7 +28,7 @@ def evaluate_ll(val_dataloader, net, langs, loss_fn=[], p_lapse=0.0, verbose=Fal
     net.eval()
     total_N = 0
     total_ll = 0
-    if not loss_fn: loss_fn = torch.nn.CrossEntropyLoss(ignore_index=langs['output'].PAD_idx)
+    if not loss_fn: loss_fn = torch.nn.CrossEntropyLoss(ignore_index=langs['input'].PAD_idx)
     for batch_idx, val_batch in enumerate(val_dataloader):
         val_batch = dat.set_batch_to_device(val_batch)
         dict_loss = batch_ll(val_batch, net, loss_fn, langs, p_lapse=p_lapse)
@@ -96,7 +96,7 @@ def batch_ll(batch, net, loss_fn, langs, p_lapse=0.0):
 
     logits_flat = decoder_output.reshape(-1, decoder_output.shape[-1])  # (batch*max_len, output_size)
     if p_lapse > 0:
-        logits_flat = smooth_decoder_outputs(logits_flat, p_lapse, langs['output'].symbols + [dat.EOS_token], langs)
+        logits_flat = smooth_decoder_outputs(logits_flat, p_lapse, langs['inputs'].symbols + [dat.EOS_token], langs)
     loss = loss_fn(logits_flat, target_batches.reshape(-1))
     loglike = -loss.cpu().item()
     dict_loss = {}
@@ -117,7 +117,7 @@ def smooth_decoder_outputs(logits_flat, p_lapse, lapse_symb_include, langs):
     #
     # Output
     #  log_probs_flat : (batch*max_len, output_size) normalized log-probabilities
-    lapse_idx_include = [langs['output'].symbol2index[s] for s in lapse_symb_include]
+    lapse_idx_include = [langs['input'].symbol2index[s] for s in lapse_symb_include]
     assert dat.SOS_token not in lapse_symb_include  # SOS should not be an allowed output through lapse model
     sz = logits_flat.size()  # get size (batch*max_len, output_size)
     probs_flat = F.softmax(logits_flat, dim=1)  # (batch*max_len, output_size)
@@ -163,7 +163,7 @@ def batch_acc(batch, net, langs, max_length, eval_type='max', out_mask_allow=[])
         additive_out_mask = -torch.inf * torch.ones((m, net.output_size), dtype=torch.float)
         additive_out_mask = additive_out_mask.to(device=DEVICE)
         for s in out_mask_allow:
-            sidx = langs['output'].symbol2index[s]
+            sidx = langs['input'].symbol2index[s]
             additive_out_mask[:, sidx] = 0.
 
     # Run through decoder
@@ -531,7 +531,7 @@ if __name__ == "__main__":
     if list(nets_state_dict.keys()) == ['net']: nets_state_dict = nets_state_dict[
         'net']  # for compatibility with legacy code
     input_size = checkpoint['langs']['input'].n_symbols
-    output_size = checkpoint['langs']['output'].n_symbols
+    output_size = checkpoint['langs']['input'].n_symbols
     emb_size = checkpoint['emb_size']
     dropout_p = checkpoint['dropout']
     ff_mult = checkpoint['ff_mult']
