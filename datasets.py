@@ -357,9 +357,9 @@ def make_biml_batch(samples, langs):
         mybatch['in_support'] += [x in sample['xs'] for x in sample['xq']]
     mybatch['q_idx'] = torch.cat(mybatch['q_idx'], dim=0)
     mybatch['xy_support_query_padded'], mybatch['xy_support_query_lengths'] = build_padded_tensor(
-        mybatch['xy_support_query'], langs['input'])
+        mybatch['xy_support_query'], langs['input']) #EOS here is fine
     mybatch['xy_support_xquery_padded'], mybatch['xy_support_xquery_lengths'] = build_padded_tensor(
-        mybatch['xy_support_xquery'], langs['input'])
+        mybatch['xy_support_xquery'], langs['input'], add_eos=False) #EOS should not be included because llama has to complete sentence
     #this is for training. includes answer. shifted one to the right
     mybatch['xy_sos_support_query_padded'], mybatch['xy_sos_support_query_lengths'] = build_padded_tensor(
         mybatch['xy_support_query'], langs['input'], add_eos=False,add_sos=True)

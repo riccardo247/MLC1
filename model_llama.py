@@ -93,7 +93,7 @@ class LlamaConfig_small(PretrainedConfig):
 def describe_model(net):
     nparams = sum(p.numel() for p in net.parameters() if p.requires_grad)
     if type(net) is LLAMA:
-        print('\nBIML specs:')
+        print('\nLLAMA specs:')
         print(' nparams=',nparams)
         #print(' nlayers_encoder=',net.nlayers_encoder)
         # print(' nlayers_decoder=',net.nlayers_decoder)

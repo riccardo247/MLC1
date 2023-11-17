@@ -151,12 +151,14 @@ def batch_acc(batch, net, langs, max_length, eval_type='max', out_mask_allow=[])
     #ITEM_SEP = SOS_token = (n in list)
 
     z_padded = batch['xy_support_xquery_padded'].to(device=DEVICE)
+    z_lengths = batch['xy_support_xquery_lengths']
+    zy_lengths = batch['xy_support_query_lengths']
     # z_padded = torch.tensor([emission_lang.symbol2index[dat.SOS_token]] * m)  # b*nq length tensor
     # z_padded = z_padded.unsqueeze(1)  # [b*nq x 1] tensor
     # z_padded = z_padded.to(device=DEVICE)
     max_length_target = batch['yq_padded'].shape[1] - 1  # length without EOS
     assert max_length >= max_length_target  # make sure that the net can generate targets of the proper length
-
+    max_length_xyq = batch['xy_support_query_padded'].shape[1]
     # make the output mask if certain emissions are restricted
     if use_mask:
         assert dat.EOS_token in out_mask_allow  # EOS must be included as an allowed symbol
@@ -167,31 +169,28 @@ def batch_acc(batch, net, langs, max_length, eval_type='max', out_mask_allow=[])
             additive_out_mask[:, sidx] = 0.
 
     # Run through decoder
-    all_decoder_outputs = torch.zeros((m, max_length), dtype=torch.long)
+    all_decoder_outputs = torch.zeros((m, max_length_xyq), dtype=torch.long)
     all_decoder_outputs = all_decoder_outputs.to(device=DEVICE)
-    for t in range(max_length):
-        decoder_output = net(z_padded, batch)
-        # decoder_output is b*nq x (t+1) x output_size
-        decoder_output = decoder_output[:, -1]  # get the last step's output (batch_size x output_size)
-        if use_mask: decoder_output += additive_out_mask
-
+    #generate on a single seq and no padding is working ok
+    #do one seq at the time. issue with batch and padding??
+    #TODO fix issues with batch generation and paddinf
+    for q in range(m):
+        decoder_output = net.llama.generate(z_padded[q, :z_lengths[q]].unsqueeze(0), max_length=max_length_xyq)
+        #llama returns already symbols
         # Choose the symbols at next timestep
-        if eval_type == 'max':  # pick the most likely
-            topi = torch.argmax(decoder_output, dim=1)
-            emissions = topi.view(-1)
-        elif eval_type == 'sample':
-            emissions = Categorical(logits=decoder_output).sample()
-        all_decoder_outputs[:, t] = emissions
-        z_padded = torch.cat([z_padded, emissions.unsqueeze(1)], dim=1)
+        # eval strategy like sample or max has to be set in llama
+        all_decoder_outputs[q, :min(decoder_output.shape[1],max_length_xyq)] = decoder_output[0, :max_length_xyq]
 
     # Get predictions as strings and see if they are correct
     all_decoder_outputs = all_decoder_outputs.detach()
     yq_predict = []  # list of all predicted query outputs as strings
     v_acc = np.zeros(m)
     for q in range(m):
-        myseq = emission_lang.tensor_to_symbols(all_decoder_outputs[q, :].view(-1))
+        myseq = emission_lang.tensor_to_symbols(all_decoder_outputs[q, z_lengths[q]:zy_lengths[q]-1].view(-1))
         yq_predict.append(myseq)
         v_acc[q] = yq_predict[q] == batch['yq'][q]  # for each query, did model get it right?
+        if yq_predict[q] != batch['yq'][q]:
+            print(f"error: {[yq_predict[q]]} but it is {batch['yq'][q]}, input: {batch['xy_support_xquery_padded'][q]}, in {batch['xy_support_query_padded'][q]}")
     in_support = np.array(batch['in_support'])  # which queries are also support items
     out = {'yq_predict': yq_predict, 'v_acc': v_acc, 'in_support': in_support}
     return out
